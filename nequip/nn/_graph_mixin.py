@@ -54,6 +54,12 @@ class GraphModuleMixin:
                     f"Edge indexes must have irreps None, got instead `{irreps_in[AtomicDataDict.EDGE_INDEX_KEY]}`"
                 )
         irreps_in[AtomicDataDict.EDGE_INDEX_KEY] = None
+        if AtomicDataDict.TOTAL_CHARGE_KEY in irreps_in:
+            if irreps_in[AtomicDataDict.TOTAL_CHARGE_KEY] != o3.Irreps("1x0e"):
+                raise ValueError(
+                    f"Total charges must have irreps 0e, got instead `{irreps_in[AtomicDataDict.TOTAL_CHARGE_KEY]}`"
+                )
+        irreps_in[AtomicDataDict.TOTAL_CHARGE_KEY] = o3.Irreps("1x0e")
 
         my_irreps_in = AtomicDataDict._fix_irreps_dict(my_irreps_in)
 

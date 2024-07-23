@@ -238,13 +238,14 @@ def instantiate(
     # Short circuit for return_args_only
     if return_args_only:
         return key_mapping, final_optional_args
+    instance = builder(**positional_args, **final_optional_args)
     # Otherwise, actually build the thing:
-    try:
-        instance = builder(**positional_args, **final_optional_args)
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to build object with prefix `{prefix}` using builder `{builder.__name__}`"
-        ) from e
+    # try:
+    #     instance = builder(**positional_args, **final_optional_args)
+    # except Exception as e:
+    #     raise RuntimeError(
+    #         f"Failed to build object with prefix `{prefix}` using builder `{builder.__name__}`"
+    #     ) from e
 
     return instance, final_optional_args
 

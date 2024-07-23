@@ -60,6 +60,37 @@ class AtomwiseLinear(GraphModuleMixin, torch.nn.Module):
         return data
 
 
+class AtomwiseMultifieldLinear(GraphModuleMixin, torch.nn.Module):
+    def __init__(
+        self,
+        field: str = AtomicDataDict.NODE_FEATURES_KEY,
+        out_field: Optional[List[str]] = None,
+        irreps_in=None,
+        irreps_out=None,
+    ):
+        super().__init__()
+        self.field = field
+        self.out_field = out_field
+        if irreps_out is None:
+            irreps_out = {single_out_field: irreps_in[field] for single_out_field in out_field}
+        elif not isinstance(irreps_out, dict):
+            irreps_out = {single_out_field: irreps_out for single_out_field in out_field}
+
+        self._init_irreps(
+            irreps_in=irreps_in,
+            required_irreps_in=[field],
+            irreps_out=irreps_out,
+        )
+        self.linears = {single_out_field: Linear(
+            irreps_in=self.irreps_in[field], irreps_out=self.irreps_out[single_out_field]
+        ) for single_out_field in out_field}
+
+    def forward(self, data: AtomicDataDict.Type) -> AtomicDataDict.Type:
+        for single_out_field in self.out_field:
+            data[single_out_field] = self.linears[single_out_field](data[self.field])
+        return data
+
+
 class AtomwiseReduce(GraphModuleMixin, torch.nn.Module):
     constant: float
 
@@ -111,6 +142,85 @@ class AtomwiseReduce(GraphModuleMixin, torch.nn.Module):
         if self.constant != 1.0:
             result = result * self.constant
         data[self.out_field] = result
+        return data
+
+
+class AtomicChargeDipoleReduce(GraphModuleMixin, torch.nn.Module):
+    def __init__(self, field, out_field, irreps_in=None, irreps_out=None):
+        super().__init__()
+        self.field = field
+        self.out_field = out_field
+        self._init_irreps(
+            irreps_in=irreps_in,
+            my_irreps_in={
+                AtomicDataDict.PER_ATOM_CHARGE_KEY: "0e",
+                AtomicDataDict.POSITIONS_KEY: "1o"
+            },
+            irreps_out={
+                AtomicDataDict.TOTAL_DIPOLE_KEY: "1o"
+            },
+        )
+
+    def forward(self, data: AtomicDataDict.Type) -> AtomicDataDict.Type:
+        atomic_charge = data[AtomicDataDict.PER_ATOM_CHARGE_KEY]
+        position = data[AtomicDataDict.POSITIONS_KEY]
+        qr = atomic_charge * position
+        if AtomicDataDict.BATCH_KEY in data:
+            result = scatter(
+                qr,
+                data[AtomicDataDict.BATCH_KEY],
+                dim=0,
+                dim_size=len(data[AtomicDataDict.BATCH_PTR_KEY]) - 1,
+                reduce="sum",
+            )
+        else:
+            # We can significantly simplify and avoid scatters
+            result = qr.sum(dim=0, keepdim=True)
+        data[AtomicDataDict.TOTAL_DIPOLE_KEY] = result
+        return data
+
+
+class AtomicChargeScale(GraphModuleMixin, torch.nn.Module):
+    def __init__(self, field, out_field, irreps_in=None, irreps_out=None):
+        super().__init__()
+        self.field = field
+        self.out_field = out_field
+        self._init_irreps(
+            irreps_in=irreps_in,
+            my_irreps_in={
+                AtomicDataDict.PER_ATOM_CHARGE_KEY: "0e",
+                AtomicDataDict.TOTAL_CHARGE_KEY: "0e"
+            },
+            irreps_out={
+                AtomicDataDict.PER_ATOM_CHARGE_KEY: "0e",
+            },
+        )
+
+    def forward(self, data: AtomicDataDict.Type) -> AtomicDataDict.Type:
+        atomic_charge = data[AtomicDataDict.PER_ATOM_CHARGE_KEY]
+        if AtomicDataDict.TOTAL_CHARGE_KEY not in data:
+            total_charge = torch.zeros_like(atomic_charge)
+        total_charge = data[AtomicDataDict.TOTAL_CHARGE_KEY]
+        if AtomicDataDict.BATCH_KEY in data:
+            total_atomic_charge = scatter(
+                atomic_charge,
+                data[AtomicDataDict.BATCH_KEY],
+                dim=0,
+                dim_size=len(data[AtomicDataDict.BATCH_PTR_KEY]) - 1,
+                reduce="sum",
+            )
+            total_atom_count = scatter(
+                torch.ones_like(atomic_charge),
+                data[AtomicDataDict.BATCH_KEY],
+                dim=0,
+                dim_size=len(data[AtomicDataDict.BATCH_PTR_KEY]) - 1,
+                reduce="sum",
+            )
+        else:
+            # We can significantly simplify and avoid scatters
+            total_atomic_charge = atomic_charge.sum(dim=0, keepdim=True)
+        data[AtomicDataDict.PER_ATOM_CHARGE_KEY] = \
+            atomic_charge + ((total_charge - total_atomic_charge) / total_atom_count)[data[AtomicDataDict.BATCH_KEY]]
         return data
 
 

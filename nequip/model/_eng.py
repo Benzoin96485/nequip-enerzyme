@@ -7,6 +7,9 @@ from nequip.data import AtomicDataDict, AtomicDataset
 from nequip.nn import (
     SequentialGraphNetwork,
     AtomwiseLinear,
+    AtomwiseMultifieldLinear,
+    AtomicChargeDipoleReduce,
+    AtomicChargeScale,
     AtomwiseReduce,
     ConvNetLayer,
 )
@@ -134,6 +137,93 @@ def EnergyModel(
         ),
     )
 
+    return SequentialGraphNetwork.from_parameters(
+        shared_params=config,
+        layers=layers,
+    )
+
+
+def EnergyMultipoleModel(
+    config, initialize: bool, dataset: Optional[AtomicDataset] = None
+) -> SequentialGraphNetwork:
+    """Base default energy model archetecture.
+
+    For minimal and full configuration option listings, see ``minimal.yaml`` and ``example.yaml``.
+    """
+    logging.debug("Start building the network model")
+
+    builder_utils.add_avg_num_neighbors(
+        config=config, initialize=initialize, dataset=dataset
+    )
+
+    num_layers = config.get("num_layers", 3)
+
+    layers = {
+        # -- Encode --
+        "one_hot": OneHotAtomEncoding,
+        "spharm_edges": SphericalHarmonicEdgeAttrs,
+        "radial_basis": RadialBasisEdgeEncoding,
+        # -- Embed features --
+        "chemical_embedding": AtomwiseLinear,
+    }
+
+    # add convnet layers
+    # insertion preserves order
+    for layer_i in range(num_layers):
+        layers[f"layer{layer_i}_convnet"] = ConvNetLayer
+
+    # .update also maintains insertion order
+    layers.update(
+        {
+            # TODO: the next linear throws out all L > 0, don't create them in the last layer of convnet
+            # -- output block --
+            "conv_to_output_hidden": (
+                AtomwiseMultifieldLinear,
+                dict(out_field=[
+                    AtomicDataDict.NODE_FEATURES_KEY + '_' + AtomicDataDict.PER_ATOM_ENERGY_KEY,
+                    AtomicDataDict.NODE_FEATURES_KEY + '_' + AtomicDataDict.PER_ATOM_CHARGE_KEY
+                ]),
+            ),
+            "output_hidden_to_energy": (
+                AtomwiseLinear,
+                dict(
+                    irreps_out="1x0e", 
+                    field=AtomicDataDict.NODE_FEATURES_KEY + '_' + AtomicDataDict.PER_ATOM_ENERGY_KEY,
+                    out_field=AtomicDataDict.PER_ATOM_ENERGY_KEY
+                ),
+            ),
+            "output_hidden_to_charge": (
+                AtomwiseLinear,
+                dict(
+                    irreps_out="1x0e", 
+                    field=AtomicDataDict.NODE_FEATURES_KEY + '_' + AtomicDataDict.PER_ATOM_CHARGE_KEY,
+                    out_field=AtomicDataDict.PER_ATOM_CHARGE_KEY
+                ),
+            ),
+            "output_charge_scale": (
+                AtomicChargeScale,
+                dict(
+                    field=AtomicDataDict.PER_ATOM_CHARGE_KEY,
+                    out_field=AtomicDataDict.PER_ATOM_CHARGE_KEY
+                )
+            )
+        }
+    )
+    layers["total_dipole_sum"] = (
+        AtomicChargeDipoleReduce,
+        dict(
+            field=[AtomicDataDict.POSITIONS_KEY, AtomicDataDict.PER_ATOM_CHARGE_KEY],
+            out_field=AtomicDataDict.TOTAL_DIPOLE_KEY
+        )
+    )
+    layers["total_energy_sum"] = (
+        AtomwiseReduce,
+        dict(
+            reduce="sum",
+            field=AtomicDataDict.PER_ATOM_ENERGY_KEY,
+            out_field=AtomicDataDict.TOTAL_ENERGY_KEY,
+        ),
+    )
     return SequentialGraphNetwork.from_parameters(
         shared_params=config,
         layers=layers,

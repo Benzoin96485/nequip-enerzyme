@@ -4,6 +4,9 @@ from ._atomwise import (
     AtomwiseOperation,
     AtomwiseReduce,
     AtomwiseLinear,
+    AtomwiseMultifieldLinear,
+    AtomicChargeScale,
+    AtomicChargeDipoleReduce,
     PerSpeciesScaleShift,
 )
 from ._interaction_block import InteractionBlock
@@ -21,6 +24,7 @@ __all__ = [
     AtomwiseOperation,
     AtomwiseReduce,
     AtomwiseLinear,
+    AtomwiseMultifieldLinear,
     PerSpeciesScaleShift,
     InteractionBlock,
     GradientOutput,

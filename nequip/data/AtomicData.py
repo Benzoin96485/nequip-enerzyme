@@ -39,6 +39,7 @@ _DEFAULT_NODE_FIELDS: Set[str] = {
     AtomicDataDict.NODE_FEATURES_KEY,
     AtomicDataDict.NODE_ATTRS_KEY,
     AtomicDataDict.ATOMIC_NUMBERS_KEY,
+    AtomicDataDict.PER_ATOM_CHARGE_KEY,
     AtomicDataDict.ATOM_TYPE_KEY,
     AtomicDataDict.FORCE_KEY,
     AtomicDataDict.PER_ATOM_ENERGY_KEY,
@@ -56,6 +57,8 @@ _DEFAULT_EDGE_FIELDS: Set[str] = {
 }
 _DEFAULT_GRAPH_FIELDS: Set[str] = {
     AtomicDataDict.TOTAL_ENERGY_KEY,
+    AtomicDataDict.TOTAL_CHARGE_KEY,
+    AtomicDataDict.TOTAL_DIPOLE_KEY,
     AtomicDataDict.STRESS_KEY,
     AtomicDataDict.VIRIAL_KEY,
     AtomicDataDict.PBC_KEY,

@@ -31,7 +31,7 @@ default_config = dict(
     wandb=False,
     model_builders=[
         "SimpleIrrepsConfig",
-        "EnergyModel",
+        "EnergyMultipoleModel",
         "PerSpeciesRescale",
         "StressForceOutput",
         "RescaleEnergyEtc",
