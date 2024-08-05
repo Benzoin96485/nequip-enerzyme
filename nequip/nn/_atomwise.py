@@ -81,9 +81,9 @@ class AtomwiseMultifieldLinear(GraphModuleMixin, torch.nn.Module):
             required_irreps_in=[field],
             irreps_out=irreps_out,
         )
-        self.linears = {single_out_field: Linear(
+        self.linears = torch.nn.ModuleDict({single_out_field: Linear(
             irreps_in=self.irreps_in[field], irreps_out=self.irreps_out[single_out_field]
-        ) for single_out_field in out_field}
+        ) for single_out_field in out_field})
 
     def forward(self, data: AtomicDataDict.Type) -> AtomicDataDict.Type:
         for single_out_field in self.out_field:

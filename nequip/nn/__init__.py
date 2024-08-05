@@ -25,6 +25,8 @@ __all__ = [
     AtomwiseReduce,
     AtomwiseLinear,
     AtomwiseMultifieldLinear,
+    AtomicChargeScale,
+    AtomicChargeDipoleReduce,
     PerSpeciesScaleShift,
     InteractionBlock,
     GradientOutput,

@@ -1,9 +1,9 @@
 from nequip.nn import SequentialGraphNetwork, AtomwiseReduce
 from nequip.nn.embedding import AddRadialCutoffToData
 from nequip.data import AtomicDataDict
-from nequip.nn.pair_potential import SimpleLennardJones, LennardJones, ZBL
+from nequip.nn.pair_potential import SimpleLennardJones, LennardJones, ZBL, ShortRangeCoulomb
 
-_PAIR_STYLES = {"LJ": SimpleLennardJones, "LJ_fancy": LennardJones, "ZBL": ZBL}
+_PAIR_STYLES = {"LJ": SimpleLennardJones, "LJ_fancy": LennardJones, "ZBL": ZBL, "Coulomb": ShortRangeCoulomb}
 
 
 def PairPotentialTerm(

@@ -212,6 +212,89 @@ class SimpleLennardJones(GraphModuleMixin, torch.nn.Module):
         self.lj_epsilon /= rescale_module.scale_by.item()
 
 
+def polynomial_cutoff(x: torch.Tensor, cutoff: float) -> torch.Tensor:
+    """
+    Polynomial cutoff function that goes from f(x) = 1 to f(x) = 0 in the interval
+    from x = 0 to x = cutoff with sufficiently many smooth derivatives [1]. 
+    For x >= cutoff, f(x) = 0. 
+
+    Params:
+    -----
+
+    x: Only positive x should be used as input.
+
+    cutoff: A positive cutoff radius.
+    
+    References:
+    -----
+    [1] Texturing & Modeling: A Procedural Approach; Morgan Kaufmann: 2003.
+    """
+    zeros = torch.zeros_like(x)
+    x_ = torch.where(x < cutoff, x, zeros)  # prevent nan in backprop
+    x_ = x_ / cutoff
+    x3 = x_ ** 3
+    x4 = x3 * x_
+    x5 = x4 * x_
+    return torch.where(x < cutoff, 1 - 6 * x5 + 15 * x4 - 10 * x3, zeros)
+
+
+class ShortRangeCoulomb(GraphModuleMixin, torch.nn.Module):
+    def __init__(
+        self,
+        r_max: float,
+        cutoff_sr: float = 0,
+        kehalf: float=0.26458863,
+        irreps_in=None,
+    ) -> None:
+        super().__init__()
+        self._init_irreps(
+            irreps_in=irreps_in, irreps_out={AtomicDataDict.PER_ATOM_ENERGY_KEY: "0e"}
+        )
+        if cutoff_sr != 0:
+            self.cutoff_sr = cutoff_sr
+        else:
+            self.cutoff_sr = r_max
+        self.cutoff_sr = cutoff_sr
+        self.kehalf = kehalf
+
+    def forward(self, data: AtomicDataDict.Type) -> AtomicDataDict.Type:
+        data = AtomicDataDict.with_edge_vectors(data, with_lengths=True)
+        idx_i = data[AtomicDataDict.EDGE_INDEX_KEY][0]
+        idx_j = data[AtomicDataDict.EDGE_INDEX_KEY][1]
+        Qa = data[AtomicDataDict.PER_ATOM_CHARGE_KEY].squeeze(-1)
+        Qi = Qa.gather(0, idx_i)
+        Qj = Qa.gather(0, idx_j)
+        Dij = data[AtomicDataDict.EDGE_LENGTH_KEY].squeeze(-1)
+        Dij_shielded = torch.sqrt(Dij * Dij + 1.0)
+        switch = polynomial_cutoff(Dij, self.cutoff_sr / 2)
+        cswitch = 1 - switch
+        Eele_ordinary = 1.0 / Dij
+        Eele_shielded = 1.0 / Dij_shielded
+        coulomb_eng = self.kehalf * Qi * Qj * (switch * Eele_shielded + cswitch * Eele_ordinary)
+
+        atomic_eng = scatter(
+            coulomb_eng,
+            idx_i,
+            dim=0,
+            dim_size=len(data[AtomicDataDict.POSITIONS_KEY]),
+        ).unsqueeze(-1)
+        if AtomicDataDict.PER_ATOM_ENERGY_KEY in data:
+            atomic_eng = atomic_eng + data[AtomicDataDict.PER_ATOM_ENERGY_KEY]
+        data[AtomicDataDict.PER_ATOM_ENERGY_KEY] = atomic_eng
+        return data
+
+
+class NaiveCoulomb(GraphModuleMixin, torch.nn.Module):
+    def __init__(
+        self,
+        lj_sigma: float,
+        lj_epsilon: float,
+        lj_use_cutoff: bool = False,
+        irreps_in=None,
+    ) -> None:
+        raise NotImplementedError
+
+
 @torch.jit.script
 def _zbl(
     Z: torch.Tensor,
